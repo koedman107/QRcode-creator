@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>專業 QR Code 產生器 (含 Logo 功能)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 qrcode.js -->
+    <script src="qrcode.min.js"></script>
+    <style>
+        #qrcode canvas, #qrcode img {
+            margin: 0 auto;
+            display: none; /* 我們將使用自定義的 canvas 顯示結果 */
+        }
+        #final-canvas {
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-lg w-full">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2 text-center">QR Code 產生器</h1>
+        <p class="text-sm text-gray-500 mb-6 text-center">自定義 Logo，永久有效，100% 本地運算</p>
+
+        <div class="space-y-5">
+            <!-- 文字輸入 -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">1. 輸入網址或內容</label>
+                <input type="text" id="text-input" 
+                    placeholder="https://example.com" 
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+            </div>
+
+            <!-- Logo 上傳 -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">2. 上傳 Logo (選填)</label>
+                <div class="flex items-center gap-2">
+                    <input type="file" id="logo-input" accept="image/*"
+                        class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    <button id="clear-logo" class="text-xs text-red-500 hover:underline">清除</button>
+                </div>
+            </div>
+
+            <!-- 預覽區域 -->
+            <div class="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center min-h-[260px]">
+                <div id="qrcode" class="hidden"></div>
+                <canvas id="final-canvas"></canvas>
+                <p id="status-text" class="mt-2 text-xs text-gray-400">QR Code 預覽 (支援圖片原比例)</p>
+            </div>
+
+            <!-- 按鈕組 -->
+            <div class="grid grid-cols-2 gap-4">
+                <button id="generate-btn" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-lg active:scale-95">
+                    產生 QR Code
+                </button>
+                <button id="download-btn" 
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-lg active:scale-95">
+                    下載圖片
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const textInput = document.getElementById('text-input');
+        const logoInput = document.getElementById('logo-input');
+        const clearLogoBtn = document.getElementById('clear-logo');
+        const generateBtn = document.getElementById('generate-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const qrcodeElement = document.getElementById('qrcode');
+        const finalCanvas = document.getElementById('final-canvas');
+        const ctx = finalCanvas.getContext('2d');
+
+        let logoImage = null;
+
+        // 初始化 QRCode 物件 (固定使用最高容錯率 H)
+        const qrcode = new QRCode(qrcodeElement, {
+            width: 800, 
+            height: 800,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        // 讀取 Logo 圖片
+        logoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        logoImage = img;
+                        renderFinal();
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 清除 Logo
+        clearLogoBtn.addEventListener('click', () => {
+            logoInput.value = '';
+            logoImage = null;
+            renderFinal();
+        });
+
+        // 合成最終圖像
+        function renderFinal() {
+            const text = textInput.value.trim() || "https://google.com";
+            qrcode.makeCode(text);
+
+            // 等待 qrcode.js 產生原始碼
+            setTimeout(() => {
+                const qrCanvas = qrcodeElement.querySelector('canvas');
+                if (!qrCanvas) return;
+
+                finalCanvas.width = 800;
+                finalCanvas.height = 800;
+
+                // 1. 畫上 QR Code
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, 800, 800);
+                ctx.drawImage(qrCanvas, 0, 0, 800, 800);
+
+                // 2. 如果有 Logo，根據長寬比繪製
+                if (logoImage) {
+                    const maxBound = 180; // 最大容許寬度或高度
+                    let drawWidth, drawHeight;
+
+                    // 保持長寬比計算
+                    const ratio = logoImage.width / logoImage.height;
+                    if (ratio > 1) {
+                        // 橫向圖片
+                        drawWidth = maxBound;
+                        drawHeight = maxBound / ratio;
+                    } else {
+                        // 縱向圖片或正方形
+                        drawHeight = maxBound;
+                        drawWidth = maxBound * ratio;
+                    }
+
+                    const x = (800 - drawWidth) / 2;
+                    const y = (800 - drawHeight) / 2;
+                    const padding = 15;
+
+                    // 畫白色背景遮罩 (配合 Logo 形狀)
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath();
+                    // 使用圓角矩形，範圍略大於 Logo
+                    ctx.roundRect(
+                        x - padding, 
+                        y - padding, 
+                        drawWidth + (padding * 2), 
+                        drawHeight + (padding * 2), 
+                        15
+                    );
+                    ctx.fill();
+
+                    // 繪製 Logo
+                    ctx.drawImage(logoImage, x, y, drawWidth, drawHeight);
+                }
+            }, 50);
+        }
+
+        generateBtn.addEventListener('click', renderFinal);
+        
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') renderFinal();
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const dataURL = finalCanvas.toDataURL("image/png");
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'qrcode_custom_logo.png';
+            link.click();
+        });
+
+        // 初始預設值
+        textInput.value = "https://google.com";
+        window.onload = renderFinal;
+    </script>
+</body>
+</html>
